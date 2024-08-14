@@ -10,11 +10,17 @@ class ToTensor3D(object):
 
     def __call__(self, sample):
         rdict = {}
-        input_data = sample['input']
+        input_data = sample['input_base']
 
         ret_input = input_data.transpose(3, 0, 1, 2)   # Pytorch supports N x C x X_dim x Y_dim
         ret_input = torch.from_numpy(ret_input).float()
-        rdict['input'] = ret_input
+        rdict['input_base'] = ret_input
+
+        input_data = sample['input_follow']
+
+        ret_input = input_data.transpose(3, 0, 1, 2)   # Pytorch supports N x C x X_dim x Y_dim
+        ret_input = torch.from_numpy(ret_input).float()
+        rdict['input_follow'] = ret_input
 
         if self.labeled:
             gt_data = sample['gt']
@@ -22,11 +28,16 @@ class ToTensor3D(object):
                 ret_gt = torch.tensor(gt_data)
 
                 rdict['gt'] = ret_gt
-            if 'seg' in sample:
-                seg_data = sample['seg']
+            if 'base_seg' in sample:
+                seg_data = sample['base_seg']
                 if seg_data is not None:
                     ret_seg = seg_data.transpose(3,0,1,2)
-                    rdict['seg'] = torch.from_numpy(ret_seg).float() 
+                    rdict['base_seg'] = torch.from_numpy(ret_seg).float()
+                seg_data = sample['follow_seg']
+                if seg_data is not None:
+                    ret_seg = seg_data.transpose(3,0,1,2)
+                    rdict['follow_seg'] = torch.from_numpy(ret_seg).float() 
+ 
         sample.update(rdict)
         return sample
 
@@ -49,28 +60,41 @@ class RandomRotation3D(object):
 
     def __call__(self, sample):
         rdict = {}
-        input_data = sample['input']
-        if len(sample['input'].shape) != 4:  # C x X_dim x Y_dim x Z_dim
+        input_data_base = sample['input_base']
+        input_data_follow = sample['input_follow']
+
+        if len(sample['input_base'].shape) != 4:  # C x X_dim x Y_dim x Z_dim
             raise ValueError("Input of RandomRotation3D should be a 4 dimensionnal tensor.")
 
         if(torch.rand(1)<self.p):
             angle = self.get_params(self.degrees)
 
-            input_rotated = np.zeros(input_data.shape, dtype=input_data.dtype)
+            input_rotated_base = np.zeros(input_data_base.shape, dtype=input_data_base.dtype)
+            input_rotated_follow = np.zeros(input_data_follow.shape, dtype=input_data_follow.dtype)
 
-            if 'seg' in sample:
-                gt_data = sample['seg'] 
-                gt_rotated = np.zeros(gt_data.shape, dtype=gt_data.dtype)
+            if 'base_seg' in sample:
+                gt_data_base = sample['base_seg'] 
+                gt_rotated_base = np.zeros(gt_data_base.shape, dtype=gt_data_base.dtype)
+                gt_data_follow = sample['follow_seg'] 
+                gt_rotated_follow = np.zeros(gt_data_follow.shape, dtype=gt_data_follow.dtype)
 
-            input_rotated = rotate(input_data, float(angle), reshape=False, order=1,mode='nearest')
-            if 'seg' in sample:
-                gt_rotated = rotate(gt_data, float(angle), reshape=False, order=self.order,mode='nearest')
-                gt_rotated = (gt_rotated > 0.5).astype(np.single)
-            
+            input_rotated_base = rotate(input_data_base, float(angle), reshape=False, order=1,mode='nearest')
+            input_rotated_follow = rotate(input_data_follow, float(angle), reshape=False, order=1,mode='nearest')
+
+            if 'base_seg' in sample:
+                gt_rotated_base = rotate(gt_data_base, float(angle), reshape=False, order=self.order,mode='nearest')
+                gt_rotated_base = (gt_rotated_base > 0.5).astype(np.single)
+
+                gt_rotated_follow = rotate(gt_data_follow, float(angle), reshape=False, order=self.order,mode='nearest')
+                gt_rotated_follow = (gt_rotated_follow > 0.5).astype(np.single)
+
             # Update the dictionary with transformed image and labels
-            rdict['input'] = input_rotated
+            rdict['input_base'] = input_rotated_base
+            rdict['input_follow'] = input_rotated_follow
 
-            if 'seg' in sample:
-                rdict['seg'] = gt_rotated
+            if 'base_seg' in sample:
+                rdict['base_seg'] = gt_rotated_base
+                rdict['follow_seg'] = gt_rotated_follow
+
             sample.update(rdict)
         return sample
